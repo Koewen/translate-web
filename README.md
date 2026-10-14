@@ -1,6 +1,6 @@
-# 本地翻译工作台（translate-web）
+# 本地翻译工作台
 
-自托管的翻译工作台。所有文本只在本地或内网处理，不上传任何第三方云服务。翻译走本机 Ollama 上的 Qwen3.5 9B 模型；前端基于 Vue 3 与 Element Plus，后端仅用 Python 标准库加 SQLite，没有第三方运行时依赖。
+自托管的翻译工作台。所有文本只在本地或内网处理，不上传任何第三方云服务。翻译走本机 Ollama 上的模型；前端基于 Vue 3 与 Element Plus，后端仅用 Python 标准库加 SQLite，没有第三方运行时依赖。
 
 ## 功能特性
 
@@ -113,15 +113,3 @@ CREATE TABLE history (
     created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 ```
-
-## 反向代理与登录（可选）
-
-compose 只提供同源的页面与 API。要从公网访问，可在外层套任意反向代理与统一登录网关，反代到本栈的页面（80）与 API（8000）端口。这部分不在仓库内，按你自己的反代与鉴权方案接入。
-
-## 主题定制
-
-外观集中在 `html/css/theme.css` 顶部的 CSS 变量（`--brand`、`--surface`、`--app-bg` 等），深浅色各一套。流光背景由 `.aurora` 容器与 `hueflow`、`drift`、`logoshine`、`sheen` 几个关键帧驱动，去掉 `.aurora` 即可回到纯色背景。
-
-## 许可证
-
-自用项目，未对外声明许可证。
