@@ -4,6 +4,10 @@ services:
     container_name: translate-web
     cpus: "2"   # 主机 16 核，限制单容器上限
     restart: unless-stopped
+    # host.docker.internal 指向宿主机上的 Ollama；真实 IP 取自 .env 的 OLLAMA_HOST_IP，
+    # 不写死在仓库里（.env 已 gitignore）。裸环境请自建 .env 并填入你的 Ollama 主机可达地址。
+    extra_hosts:
+      - "host.docker.internal:${OLLAMA_HOST_IP}"
     depends_on:
       - translate-api
     volumes:

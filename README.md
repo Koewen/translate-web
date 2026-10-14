@@ -50,7 +50,7 @@ translate-web/
 
 ## 快速开始
 
-前置条件：已安装 Docker，且本机运行 Ollama（默认地址 `http://192.168.31.28:11434`，可在 `default.conf` 里改）。
+前置条件：已安装 Docker，且本机（或网络可达的机器）运行 Ollama。其地址通过 `host.docker.internal:11434` 访问宿主机上的 Ollama——该名称由 compose 的 `extra_hosts` 映射到 `.env` 里的 `OLLAMA_HOST_IP`（不写死内网地址，`.env` 已 gitignore）。首次部署请创建 `.env` 并填入你的 Ollama 主机可达地址；若使用其他网络拓扑，请相应修改 `OLLAMA_HOST_IP`。
 
 ```bash
 git clone <your-repo> translate-web
@@ -116,7 +116,7 @@ CREATE TABLE history (
 
 ## 反向代理与登录（可选）
 
-compose 只提供同源的页面与 API。要从公网访问，可在外层套 Nginx Proxy Manager，经 oauth2-proxy（Casdoor SSO）统一登录后再反代到本栈。这部分不在仓库内，按你自己的反代与鉴权方案接入。
+compose 只提供同源的页面与 API。要从公网访问，可在外层套任意反向代理与统一登录网关，反代到本栈的页面（80）与 API（8000）端口。这部分不在仓库内，按你自己的反代与鉴权方案接入。
 
 ## 主题定制
 

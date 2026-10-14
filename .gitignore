@@ -10,3 +10,8 @@ __pycache__/
 # 编辑器
 .idea/
 .vscode/
+
+# 本地环境（含内网 IP 等敏感信息，不纳入版本控制）
+.env
+.env.local
+*.local
