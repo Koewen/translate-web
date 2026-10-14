@@ -15,6 +15,10 @@ let ctrl = null;
 function splitSenses(dst) {
   return String(dst || '').split(' / ').map(s => s.trim()).filter(Boolean);
 }
+/* 去掉 "(machinery etc)/(computing)" 等限定括注，得到更通用的说法 */
+function stripQualifiers(s) {
+  return String(s || '').replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+}
 
 export default {
   name: 'TranslatePane',
@@ -62,11 +66,21 @@ export default {
           <el-button class="out-copy" :icon="CopyDocument" circle size="small"
                      title="复制译文" @click="copyOut" />
           <template v-if="store.dictItems.length">
-            <div class="dict-gloss" v-for="(ln, i) in dictLines" :key="i">
-              <span class="dict-pos" v-if="ln.pos">{{ ln.pos }}</span>
-              <span class="dict-dst">{{ ln.text }}</span>
-              <span class="dict-read" v-if="ln.reading">{{ ln.reading }}</span>
+            <div class="dict-gloss dict-primary">
+              <span class="dict-pos" v-if="dictPrimary.pos">{{ dictPrimary.pos }}</span>
+              <span class="dict-dst">{{ dictPrimary.text }}</span>
+              <span class="dict-read" v-if="dictPrimary.reading">{{ dictPrimary.reading }}</span>
             </div>
+            <div class="dict-more" v-if="dictLines.length > 1" @click="dictExpanded = !dictExpanded">
+              {{ dictExpanded ? '▾ 收起义项' : '▸ 展开全部 ' + dictLines.length + ' 个义项' }}
+            </div>
+            <template v-if="dictExpanded">
+              <div class="dict-gloss" v-for="(ln, i) in dictLines" :key="i">
+                <span class="dict-pos" v-if="ln.pos">{{ ln.pos }}</span>
+                <span class="dict-dst">{{ ln.text }}</span>
+                <span class="dict-read" v-if="ln.reading">{{ ln.reading }}</span>
+              </div>
+            </template>
           </template>
           <template v-else-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
           <template v-else>译文将在这里流式输出…</template>
@@ -101,7 +115,7 @@ export default {
     const pairLabel = computed(() =>
       nameOf(store.srcLang) + ' → ' + nameOf(store.tgtLang));
 
-    /* 离线词典：把每个词条的多个义项（" / " 连接）拆成独立行，逐行展示 */
+    /* 离线词典：把每个词条的多个义项（" / " 连接）拆成独立行 */
     const dictLines = computed(() => {
       const lines = [];
       for (const it of store.dictItems) {
@@ -109,6 +123,13 @@ export default {
           lines.push({ text: s, pos: i === 0 ? it.pos : '', reading: i === 0 ? it.reading : '' }));
       }
       return lines;
+    });
+    /* 默认只显示一个通用解释：取首条义项并去括注；其余义项按需展开 */
+    const dictExpanded = ref(false);
+    const dictPrimary = computed(() => {
+      const first = dictLines.value[0];
+      if (!first) return { text: '', pos: '', reading: '' };
+      return { ...first, text: stripQualifiers(first.text) || first.text };
     });
 
     /* 路由说明行：随输入/模式/术语实时联动 */
@@ -176,6 +197,7 @@ export default {
 
       store.err = '';
       store.dictItems = [];            // 每次翻译先清空上一次词典结果
+      dictExpanded.value = false;      // 默认收起，只显示一个通用解释
       const langs = resolveLangs(text, store.srcLang, store.tgtLang);
       const terms = enabledTerms.value;
 
@@ -276,6 +298,7 @@ export default {
       store, setTheme, LANGS, Swap: ElementPlusIconsVue.Swap,
       Delete: ElementPlusIconsVue.Delete, CopyDocument: ElementPlusIconsVue.CopyDocument,
       modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy, dictLines,
+      dictPrimary, dictExpanded,
       outBox, swap, clearAll, copyOut, doTranslate,
     };
   },
