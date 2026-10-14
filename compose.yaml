@@ -1,0 +1,48 @@
+services:
+  translate-web:
+    image: docker.1ms.run/library/nginx:alpine
+    container_name: translate-web
+    cpus: "2"   # 主机 16 核，限制单容器上限
+    restart: unless-stopped
+    depends_on:
+      - translate-api
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # 轻量持久化 API（Python 标准库 + SQLite，零第三方依赖）
+  # 术语干预 & 翻译历史落库：./data/translate.db
+  translate-api:
+    image: docker.1ms.run/library/python:3.12-alpine
+    container_name: translate-api
+    cpus: "1"
+    restart: unless-stopped
+    command: python -u /app/main.py
+    environment:
+      - TRANSLATE_BIND=0.0.0.0
+      - TRANSLATE_PORT=8000
+      - TRANSLATE_DB=/data/translate.db
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./api:/app:ro
+      - ./data:/data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  web:
+    external: true

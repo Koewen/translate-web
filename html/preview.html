@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>译 · 新版布局预览（静态）</title>
+<link rel="stylesheet" href="vendor/element-plus.css">
+<link rel="stylesheet" href="vendor/ep-dark-vars.css">
+<link rel="stylesheet" href="css/theme.css">
+<style>
+  /* 预览专用：用纯静态标记复刻组件外观，方便在不登录的情况下看新版视觉 */
+  .preview-note{ position:fixed; bottom:14px; left:50%; transform:translateX(-50%);
+    background:var(--surface-solid); border:1px solid var(--border); color:var(--text-2);
+    font-size:12px; padding:7px 14px; border-radius:999px; box-shadow:var(--shadow); z-index:99; }
+  .seg{ display:inline-flex; background:var(--surface-3); border-radius:8px; padding:3px; gap:2px; }
+  .seg span{ padding:4px 12px; border-radius:6px; font-size:12.5px; color:var(--text-2); cursor:default; }
+  .seg span.on{ background:var(--brand); color:#fff; font-weight:600; }
+  select.fake{ border:1px solid var(--border); background:var(--surface-solid); color:var(--text-1);
+    border-radius:8px; padding:7px 10px; font-size:13px; min-width:128px; outline:none; }
+  .btn-primary{ background:linear-gradient(135deg,var(--brand),var(--brand-deep)); color:#fff; border:none;
+    padding:10px 26px; font-size:14.5px; font-weight:600; letter-spacing:1px; border-radius:11px;
+    box-shadow:0 8px 20px rgba(79,124,255,.32); cursor:default; }
+  .circle-btn{ width:34px;height:34px;border-radius:50%;border:1px solid var(--border); background:var(--surface-solid);
+    color:var(--text-2); display:inline-flex;align-items:center;justify-content:center; cursor:default; }
+  .el-switch{ width:38px;height:20px;border-radius:999px;background:var(--brand);position:relative;display:inline-block; }
+  .el-switch i{ position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff; }
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true">
+  <i class="blob b1"></i>
+  <i class="blob b2"></i>
+  <i class="blob b3"></i>
+  <i class="blob b4"></i>
+</div>
+<div id="app">
+
+  <!-- 顶栏 -->
+  <header class="tl-header">
+    <div class="tl-logo">译</div>
+    <div class="tl-titles">
+      <div class="tl-title">本地翻译工作台</div>
+      <div class="tl-subtitle">Qwen3.5 9B · 文本不出内网</div>
+    </div>
+    <div class="tl-spacer"></div>
+    <div class="tl-status"><span class="dot"></span><span>模型空闲</span></div>
+    <div class="circle-btn">☀</div>
+    <div class="circle-btn">☰</div>
+  </header>
+
+  <!-- 主体 -->
+  <div class="tl-main">
+    <div class="tl-center">
+      <div class="pane">
+        <!-- 工具栏 -->
+        <div class="pane-toolbar">
+          <select class="fake"><option>自动识别</option></select>
+          <select class="fake"><option>中文</option></select>
+          <div class="seg"><span class="on">自动</span><span>快速</span><span>长文</span></div>
+          <div class="tl-spacer"></div>
+          <div class="circle-btn">🗑</div>
+        </div>
+
+        <!-- 路由提示 -->
+        <div class="route-line">
+          <span>自动识别 → 中文</span>
+          <span class="route-chip"><span class="dot"></span>快速通道 · Qwen3.5 9B</span>
+          <span>· 已注入 3 条术语</span>
+        </div>
+
+        <!-- 双栏：原文 | 译文 -->
+        <div class="duo">
+          <div class="duo-half">
+            <div class="duo-label">原文 <span class="cnt">42 字</span></div>
+            <div style="padding:16px 18px;font-size:15.5px;line-height:1.8;color:var(--text-1)">
+              The quick brown fox jumps over the lazy dog while the sun sets behind the distant mountains.
+            </div>
+          </div>
+          <div class="duo-swap">⇄</div>
+          <div class="duo-half">
+            <div class="duo-label">译文 <span class="cnt">38 字</span></div>
+            <div style="padding:16px 18px;font-size:15.5px;line-height:1.85;color:var(--text-1)">
+              那只敏捷的棕色狐狸跃过了懒狗，而太阳正缓缓沉入远山的背后。
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部 -->
+        <div class="pane-bottom">
+          <span class="meta">快速通道 · Qwen3.5 9B · 0.42s</span>
+          <button class="btn-primary">翻 译</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <aside class="tl-aside">
+      <div class="el-tabs">
+        <div style="display:flex;gap:18px;border-bottom:1px solid var(--border);padding:4px 0 0;margin-bottom:12px">
+          <span style="font-weight:700;color:var(--brand);border-bottom:2px solid var(--brand);padding-bottom:8px">术语干预</span>
+          <span style="color:var(--text-3);padding-bottom:8px">翻译历史</span>
+        </div>
+        <div style="border:1px dashed var(--border-strong);border-radius:12px;background:var(--brand-softer);padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          <div style="display:flex;gap:8px"><input class="fake" placeholder="原文术语" style="flex:1"><input class="fake" placeholder="指定译名" style="flex:1"></div>
+          <div style="display:flex;gap:8px"><input class="fake" placeholder="备注（可选）" style="flex:1"><span class="btn-primary" style="padding:8px 18px">添加</span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <input class="fake" placeholder="筛选术语" style="flex:1">
+          <span style="font-size:11.5px;color:var(--text-3);white-space:nowrap">3/3 启用</span>
+        </div>
+        <div class="panel-scroll">
+          <div class="term-item"><span class="el-switch"><i></i></span><div class="pair"><div><span class="s">GPU</span><span class="arrow">→</span><span class="d">图形处理器</span></div></div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">✎</div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">🗑</div></div>
+          <div class="term-item"><span class="el-switch"><i></i></span><div class="pair"><div><span class="s">image</span><span class="arrow">→</span><span class="d">镜像</span></div><div class="note">容器/磁盘映像语境</div></div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">✎</div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">🗑</div></div>
+          <div class="term-item"><span class="el-switch"><i></i></span><div class="pair"><div><span class="s">kernel</span><span class="arrow">→</span><span class="d">内核</span></div></div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">✎</div><div class="circle-btn" style="width:26px;height:26px;font-size:12px">🗑</div></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="preview-note">这是静态预览，仅用于查看新版视觉；真实交互请登录后访问主页。</div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# 运行时数据（SQLite 持久化，含翻译历史/术语，不纳入版本控制）
+data/
+
+# 系统 / 缓存
+.DS_Store
+__pycache__/
+*.pyc
+*.log
+
+# 编辑器
+.idea/
+.vscode/

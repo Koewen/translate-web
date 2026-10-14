@@ -1,0 +1,221 @@
+/* ============================================================
+ * TranslatePane.js —— 主翻译面板（原文/译文/工具栏/流式渲染）
+ * ============================================================ */
+import { store, setTheme } from '../store.js';
+import { apiTerms, apiHistory, ollamaChatStream, ollamaPs } from '../api.js';
+import {
+  LANGS, CHANNELS, OPTS, LONG_THRESHOLD,
+  nameOf, resolveLangs, buildPrompt, pickChannel,
+} from '../translator.js';
+
+let ctrl = null;
+
+export default {
+  name: 'TranslatePane',
+  template: `
+  <div class="pane">
+    <div class="pane-toolbar">
+      <el-select v-model="store.srcLang" size="default" style="width:132px">
+        <el-option label="自动识别" value="auto" />
+        <el-option v-for="l in LANGS" :key="l[0]" :label="l[1]" :value="l[0]" />
+      </el-select>
+      <el-select v-model="store.tgtLang" size="default" style="width:132px">
+        <el-option v-for="l in LANGS" :key="l[0]" :label="l[1]" :value="l[0]" />
+      </el-select>
+      <el-segmented v-model="store.mode" :options="modeOpts" size="default" />
+      <div class="tl-spacer"></div>
+      <el-button round @click="doTranslate" :type="store.running ? 'warning' : 'primary'"
+                 style="min-width:116px">
+        {{ store.running ? '停止' : '翻 译' }}
+      </el-button>
+      <el-tooltip content="清空原文与译文" placement="top">
+        <el-button :icon="Delete" circle @click="clearAll" />
+      </el-tooltip>
+    </div>
+
+    <div class="route-line">
+      <span>{{ pairLabel }}</span>
+      <span class="route-chip"><span class="dot"></span>{{ channel.label }}</span>
+      <span>{{ routeWhy }}</span>
+      <span v-if="slow">· 9B CPU 推理，约 3–15 秒/句</span>
+    </div>
+
+    <div class="duo">
+      <div class="duo-half">
+        <div class="duo-label">原文 <span class="cnt">{{ srcLen }} 字</span></div>
+        <el-input
+          v-model="store.srcText" type="textarea" class="src-area"
+          :autosize="false" resize="none" spellcheck="false"
+          placeholder="输入要翻译的内容…（Ctrl+Enter 翻译）"
+          @keydown.ctrl.enter.prevent="doTranslate" />
+      </div>
+      <el-button class="duo-swap" :icon="Swap" circle title="交换语言" @click="swap" />
+      <div class="duo-half">
+        <div class="duo-label">译文 <span class="cnt">{{ outLen }} 字</span></div>
+        <div class="out-box" :class="{ empty: !store.outText }" ref="outBox">
+          <el-button class="out-copy" :icon="CopyDocument" circle size="small"
+                     title="复制译文" @click="copyOut" />
+          <template v-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
+          <template v-else>译文将在这里流式输出…</template>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane-bottom">
+      <span class="meta">{{ store.meta }}</span>
+      <span class="err-line">{{ store.err }}</span>
+    </div>
+  </div>
+  `,
+  setup() {
+    const { ref, computed, watch, onMounted } = Vue;
+    const { ElMessage } = ElementPlus;
+    const outBox = ref(null);
+
+    const modeOpts = [
+      { label: '自动', value: 'auto' },
+      { label: '快速', value: 'fast' },
+      { label: '长文', value: 'quality' },
+    ];
+
+    const srcLen = computed(() => store.srcText.length);
+    const outLen = computed(() => store.outText.length);
+    const enabledTerms = computed(() => store.terms.filter(t => t.enabled));
+
+    const channel = computed(() =>
+      CHANNELS[pickChannel(store.srcText, store.mode, enabledTerms.value.length).key]);
+    const slow = computed(() => channel.value.key === 'quality');
+    const pairLabel = computed(() =>
+      nameOf(store.srcLang) + ' → ' + nameOf(store.tgtLang));
+
+    /* 路由说明行：随输入/模式/术语实时联动 */
+    const routeWhy = computed(() => {
+      if (store.routeWhy) return store.routeWhy;
+      const t = store.srcText.trim();
+      if (!t) return '输入文本后自动选择通道';
+      const r = pickChannel(t, store.mode, enabledTerms.value.length);
+      return r.why;
+    });
+
+    /* 流式输出自动滚动（rAF 节流） */
+    let scrollRAF = 0;
+    watch(() => store.outText, () => {
+      if (scrollRAF) return;
+      scrollRAF = requestAnimationFrame(() => {
+        scrollRAF = 0;
+        if (outBox.value) outBox.value.scrollTop = outBox.value.scrollHeight;
+      });
+    });
+
+    /* 历史回填请求（来自 HistoryPanel） */
+    watch(() => store.fillRequest, (req) => {
+      if (!req) return;
+      store.srcLang = req.s; store.tgtLang = req.t;
+      store.srcText = req.in;
+    });
+
+    function swap() {
+      const s = store.srcLang;
+      store.srcLang = store.tgtLang;
+      store.tgtLang = (s === 'auto') ? 'en' : s;   // 目标不允许「自动识别」
+      if (store.outText.trim()) {
+        store.srcText = store.outText;
+        store.outText = ''; store.meta = ''; store.err = '';
+      }
+      ElMessage.success('已交换语言');
+    }
+
+    function clearAll() {
+      store.srcText = ''; store.outText = '';
+      store.meta = ''; store.err = ''; store.routeWhy = '';
+    }
+
+    async function copyOut() {
+      if (!store.outText.trim()) return ElMessage.warning('还没有译文');
+      try {
+        await navigator.clipboard.writeText(store.outText);
+        ElMessage.success('译文已复制到剪贴板');
+      } catch { ElMessage.error('复制失败'); }
+    }
+
+    async function doTranslate() {
+      if (store.running) { if (ctrl) ctrl.abort(); return; }
+      const text = store.srcText.trim();
+      if (!text) { ElMessage.warning('请先输入要翻译的内容'); return; }
+
+      store.err = '';
+      const langs = resolveLangs(text, store.srcLang, store.tgtLang);
+      const terms = enabledTerms.value;
+      const ch = pickChannel(text, store.mode, terms.length);
+      const cfg = CHANNELS[ch.key];
+      store.routeWhy = langs.note;
+
+      const prompt = buildPrompt(text, langs.src, langs.tgt, terms);
+      const t0 = performance.now();
+      store.running = true;
+      store.outText = '';
+      store.meta = cfg.label + ' · 模型加载中…';
+      ctrl = new AbortController();
+
+      try {
+        const r = await ollamaChatStream({
+          model: cfg.model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true, keep_alive: cfg.keep, think: false,
+          options: { ...OPTS },
+        }, ctrl.signal, (acc) => { store.outText = acc; });
+
+        const dt = ((performance.now() - t0) / 1000).toFixed(2);
+        store.outText = r.text || '（未返回内容）';
+        store.meta = cfg.label + ' · ' + r.text.length + ' 字'
+          + (r.loadSec > 1 ? ' · 冷启动 ' + r.loadSec.toFixed(1) + 's' : '')
+          + ' · ' + dt + 's';
+
+        /* 历史落库（SQLite） */
+        if (r.text) {
+          try {
+            await apiHistory.add({
+              src_text: text, dst_text: r.text,
+              src_lang: langs.src, dst_lang: langs.tgt,
+              model: cfg.label, chars: r.text.length,
+              duration_ms: Math.round(dt * 1000),
+            });
+            store.histCount += 1;
+            store.histReloadTick = (store.histReloadTick || 0) + 1;
+          } catch (e) { console.warn('历史写入失败', e); }
+        }
+        refreshStatus();   // 翻译后模型驻留，同步状态
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          store.meta = '已停止';
+        } else {
+          store.err = String(e.message || e).slice(0, 200);
+          store.outText = '';
+          ElMessage.error('翻译失败，请查看错误提示');
+        }
+      } finally {
+        store.running = false;
+        ctrl = null;
+      }
+    }
+
+    async function refreshStatus() {
+      const ps = await ollamaPs();
+      store.resident = (ps.models || []).map(m => ({
+        name: m.name,
+        vram: m.size_vram ? (m.size_vram / 1073741824).toFixed(2) + ' GB' : '—',
+      }));
+    }
+    onMounted(refreshStatus);
+
+    /* 跨组件：Header 也会触发刷新/释放，挂到 store 上 */
+    store.refreshStatus = refreshStatus;
+
+    return {
+      store, setTheme, LANGS, Swap: ElementPlusIconsVue.Swap,
+      Delete: ElementPlusIconsVue.Delete, CopyDocument: ElementPlusIconsVue.CopyDocument,
+      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy,
+      outBox, swap, clearAll, copyOut, doTranslate,
+    };
+  },
+};

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 浅色系 favicon：淡蓝渐变圆角方块 + 「译」字 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eff6ff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)" stroke="#bfdbfe" stroke-width="2.5"/>
+  <path d="M14 22h16M22 14v8" stroke="#93c5fd" stroke-width="3.2" stroke-linecap="round" opacity="0.9"/>
+  <text x="34" y="44" font-size="30" text-anchor="middle" font-weight="700"
+        fill="url(#ink)" font-family="'PingFang SC','Microsoft YaHei',sans-serif">译</text>
+  <circle cx="16" cy="46" r="5.5" fill="none" stroke="#93c5fd" stroke-width="2.6" opacity="0.85"/>
+</svg>
