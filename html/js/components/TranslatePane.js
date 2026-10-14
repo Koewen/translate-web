@@ -19,6 +19,10 @@ function splitSenses(dst) {
 function stripQualifiers(s) {
   return String(s || '').replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
 }
+/* 去首尾标点/空白，提升查词命中（hello, / test. / 猫。 → hello/test/猫） */
+function probeWord(s) {
+  return String(s || '').trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+}
 
 export default {
   name: 'TranslatePane',
@@ -45,7 +49,7 @@ export default {
 
     <div class="route-line">
       <span>{{ pairLabel }}</span>
-      <span class="route-chip"><span class="dot"></span>{{ channel.label }}</span>
+      <span class="route-chip"><span class="dot"></span>{{ routeChip }}</span>
       <span>{{ routeWhy }}</span>
       <span v-if="slow">· 9B CPU 推理，约 3–15 秒/句</span>
     </div>
@@ -108,12 +112,19 @@ export default {
     ];
 
     const srcLen = computed(() => store.srcText.length);
-    const outLen = computed(() => store.outText.length);
+    const outLen = computed(() => store.dictItems.length
+      ? store.dictItems.reduce((n, x) => n + (x.dst || '').length, 0)
+      : store.outText.length);
     const enabledTerms = computed(() => store.terms.filter(t => t.enabled));
 
     const channel = computed(() =>
       CHANNELS[pickChannel(store.srcText, store.mode, enabledTerms.value.length).key]);
     const slow = computed(() => channel.value.key === 'quality');
+    /* 路由 chip：命中离线词典/术语时显示来源，而非模型名 */
+    const routeChip = computed(() => {
+      if (store.dictItems.length) return store.dictSource === 'term' ? '术语干预' : '离线词典';
+      return channel.value.label;
+    });
     const pairLabel = computed(() =>
       nameOf(store.srcLang) + ' → ' + nameOf(store.tgtLang));
 
@@ -156,11 +167,13 @@ export default {
       });
     });
 
-    /* 历史回填请求（来自 HistoryPanel） */
+    /* 历史回填请求（来自 HistoryPanel）：回填原文并清空上一次结果，避免新旧混杂 */
     watch(() => store.fillRequest, (req) => {
       if (!req) return;
       store.srcLang = req.s; store.tgtLang = req.t;
       store.srcText = req.in;
+      store.outText = ''; store.dictItems = []; store.dictSource = '';
+      store.meta = ''; store.err = ''; store.routeWhy = '';
     });
 
     function swap() {
@@ -203,16 +216,41 @@ export default {
 
       store.err = '';
       store.dictItems = [];            // 每次翻译先清空上一次词典结果
+      store.dictSource = '';
       const langs = resolveLangs(text, store.srcLang, store.tgtLang);
       const terms = enabledTerms.value;
+      const word = probeWord(text);    // 去首尾标点，提升单词命中率
+
+      /* ---- 术语优先：单词恰好命中启用术语 → 直接用指定译名，不走词典/模型 ---- */
+      if (isSingleToken(word)) {
+        const hit = terms.find(t => t.src.trim().toLowerCase() === word.toLowerCase());
+        if (hit) {
+          store.dictItems = [{ src: word, dst: hit.dst, pos: '', reading: '' }];
+          store.dictSource = 'term';
+          store.outText = '';
+          store.meta = '术语干预 · 指定译名';
+          store.routeWhy = '命中术语「' + word + ' → ' + hit.dst + '」，未走模型';
+          try {
+            await apiHistory.add({
+              src_text: text, dst_text: hit.dst,
+              src_lang: langs.src, dst_lang: langs.tgt, model: '术语干预',
+              chars: (hit.dst || '').length, duration_ms: 0,
+            });
+            store.histCount += 1;
+            store.histReloadTick = (store.histReloadTick || 0) + 1;
+          } catch (e) { console.warn('术语历史写入失败', e); }
+          return;
+        }
+      }
 
       /* ---- 离线词典快路径：单词/短词先查本地词典，命中即秒回，不调用模型 ---- */
       const pair = dictPairFor(langs.src, langs.tgt);
-      if (pair && isSingleToken(text)) {
+      if (pair && isSingleToken(word)) {
         try {
-          const d = await apiDict.query(text, pair);
+          const d = await apiDict.query(word, pair);
           if (d.items && d.items.length) {
             store.dictItems = d.items;
+            store.dictSource = 'dict';
             store.outText = '';
             const senseCount = d.items.reduce((n, x) => n + splitSenses(x.dst).length, 0);
             store.meta = '离线词典 · ' + senseCount + ' 个义项';
@@ -302,7 +340,7 @@ export default {
     return {
       store, setTheme, LANGS, Swap: ElementPlusIconsVue.Swap,
       Delete: ElementPlusIconsVue.Delete, CopyDocument: ElementPlusIconsVue.CopyDocument,
-      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy,
+      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy, routeChip,
       dictHead, dictExplanations,
       outBox, swap, clearAll, copyOut, doTranslate,
     };

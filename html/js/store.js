@@ -30,6 +30,7 @@ export const store = reactive({
 
   /* 离线词典快路径结果（命中时渲染释义列表，不调用模型） */
   dictItems: [],
+  dictSource: '',            // 命中来源：'dict' 离线词典 | 'term' 术语干预 | '' 模型
 
   /* 模型状态（/ollama/api/ps） */
   resident: [],            // [{name, size_vram, ...}]
