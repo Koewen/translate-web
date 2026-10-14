@@ -256,16 +256,26 @@ html.dark .route-chip{ color:var(--brand); }
 .out-copy:hover{ color:var(--brand); }
 .out-box:hover .out-copy{ opacity:1; }
 
-/* 离线词典快路径：释义列表 */
-.dict-gloss{ padding:8px 0; border-bottom:1px dashed var(--border); line-height:1.75; word-break:break-word; }
-.dict-gloss:last-child{ border-bottom:none; }
-.dict-pos{ display:inline-block; min-width:30px; margin-right:8px; padding:1px 8px; border-radius:7px; background:var(--brand-soft); color:var(--brand-deep); font-size:12px; font-weight:600; text-align:center; vertical-align:1px; }
-.dict-dst{ color:var(--text-1); }
-.dict-read{ color:var(--text-3); font-size:13px; margin-left:6px; }
-.dict-gloss.dict-primary{ padding-top:2px; }
-.dict-gloss.dict-primary .dict-dst{ font-size:17px; font-weight:600; }
-.dict-more{ margin-top:8px; font-size:12.5px; color:var(--brand); cursor:pointer; user-select:none; width:fit-content; }
-.dict-more:hover{ text-decoration:underline; }
+/* 离线词典：词头 + 分区义项卡（概要 + 细节） */
+.dict-entry{ padding-top:2px; }
+.dict-head{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding-bottom:10px; margin-bottom:4px; border-bottom:1px solid var(--border); }
+.dict-word{ font-size:18px; font-weight:700; color:var(--text-1); }
+.dict-tag{ padding:1px 9px; border-radius:999px; background:var(--brand-soft); color:var(--brand-deep); font-size:12px; font-weight:600; }
+.dict-exp{ padding:9px 0; border-bottom:1px dashed var(--border); }
+.dict-exp:last-child{ border-bottom:none; }
+.dict-exp-summary{ display:flex; align-items:baseline; gap:9px; }
+.dict-idx{ flex:0 0 auto; min-width:20px; height:20px; border-radius:6px; background:var(--brand-softer); color:var(--brand); font-size:12px; font-weight:700; line-height:20px; text-align:center; }
+.dict-exp-text{ color:var(--text-1); font-size:15px; word-break:break-word; }
+.dict-exp.primary .dict-exp-text{ font-size:16.5px; font-weight:600; }
+.dict-exp-detail{ display:flex; align-items:baseline; gap:8px; margin:4px 0 0 29px; font-size:13px; color:var(--text-3); }
+.dict-detail-label{ flex:0 0 auto; padding:0 6px; border-radius:5px; border:1px solid var(--border); font-size:11px; line-height:16px; }
+.dict-detail-text{ word-break:break-word; }
+/* 移动端：减小缩进/字号，避免溢出 */
+@media (max-width:640px){
+  .dict-exp-detail{ margin-left:0; }
+  .dict-word{ font-size:16px; }
+  .dict-exp.primary .dict-exp-text{ font-size:15.5px; }
+}
 
 /* 底部操作条 */
 .pane-bottom{

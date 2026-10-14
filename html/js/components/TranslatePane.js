@@ -66,21 +66,23 @@ export default {
           <el-button class="out-copy" :icon="CopyDocument" circle size="small"
                      title="复制译文" @click="copyOut" />
           <template v-if="store.dictItems.length">
-            <div class="dict-gloss dict-primary">
-              <span class="dict-pos" v-if="dictPrimary.pos">{{ dictPrimary.pos }}</span>
-              <span class="dict-dst">{{ dictPrimary.text }}</span>
-              <span class="dict-read" v-if="dictPrimary.reading">{{ dictPrimary.reading }}</span>
-            </div>
-            <div class="dict-more" v-if="dictLines.length > 1" @click="dictExpanded = !dictExpanded">
-              {{ dictExpanded ? '▾ 收起义项' : '▸ 展开全部 ' + dictLines.length + ' 个义项' }}
-            </div>
-            <template v-if="dictExpanded">
-              <div class="dict-gloss" v-for="(ln, i) in dictLines" :key="i">
-                <span class="dict-pos" v-if="ln.pos">{{ ln.pos }}</span>
-                <span class="dict-dst">{{ ln.text }}</span>
-                <span class="dict-read" v-if="ln.reading">{{ ln.reading }}</span>
+            <div class="dict-entry">
+              <div class="dict-head">
+                <span class="dict-word">{{ dictHead.word }}</span>
+                <span class="dict-tag" v-if="dictHead.reading">{{ dictHead.reading }}</span>
+                <span class="dict-tag" v-if="dictHead.pos">{{ dictHead.pos }}</span>
               </div>
-            </template>
+              <div class="dict-exp" v-for="(e, i) in dictExplanations" :key="i" :class="{ primary: i === 0 }">
+                <div class="dict-exp-summary">
+                  <span class="dict-idx">{{ i + 1 }}</span>
+                  <span class="dict-exp-text">{{ e.summary }}</span>
+                </div>
+                <div class="dict-exp-detail" v-if="e.detail">
+                  <span class="dict-detail-label">细节</span>
+                  <span class="dict-detail-text">{{ e.detail }}</span>
+                </div>
+              </div>
+            </div>
           </template>
           <template v-else-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
           <template v-else>译文将在这里流式输出…</template>
@@ -115,21 +117,24 @@ export default {
     const pairLabel = computed(() =>
       nameOf(store.srcLang) + ' → ' + nameOf(store.tgtLang));
 
-    /* 离线词典：把每个词条的多个义项（" / " 连接）拆成独立行 */
-    const dictLines = computed(() => {
-      const lines = [];
-      for (const it of store.dictItems) {
-        splitSenses(it.dst).forEach((s, i) =>
-          lines.push({ text: s, pos: i === 0 ? it.pos : '', reading: i === 0 ? it.reading : '' }));
-      }
-      return lines;
+    /* 离线词典结果：词头 + 逐条义项（概要 + 细节，分区呈现） */
+    const dictHead = computed(() => {
+      const it = store.dictItems[0];
+      if (!it) return { word: '', reading: '', pos: '' };
+      return { word: it.src, reading: it.reading || '', pos: it.pos || '' };
     });
-    /* 默认只显示一个通用解释：取首条义项并去括注；其余义项按需展开 */
-    const dictExpanded = ref(false);
-    const dictPrimary = computed(() => {
-      const first = dictLines.value[0];
-      if (!first) return { text: '', pos: '', reading: '' };
-      return { ...first, text: stripQualifiers(first.text) || first.text };
+    const dictExplanations = computed(() => {
+      const exps = [];
+      for (const it of store.dictItems) {
+        for (const s of splitSenses(it.dst)) {
+          const parens = s.match(/\([^)]*\)/g) || [];      // 括注 = 细节/限定
+          exps.push({
+            summary: stripQualifiers(s) || s,               // 概要：去括注的核心说法
+            detail: parens.map(x => x.slice(1, -1)).join(' · '),
+          });
+        }
+      }
+      return exps;
     });
 
     /* 路由说明行：随输入/模式/术语实时联动 */
@@ -163,7 +168,8 @@ export default {
       store.srcLang = store.tgtLang;
       store.tgtLang = (s === 'auto') ? 'en' : s;   // 目标不允许「自动识别」
       if (store.dictItems.length) {
-        store.srcText = store.dictItems[0].dst;      // 词典结果取首个释义回填
+        const ex = dictExplanations.value[0];         // 用通用解释回填，便于反向再查
+        store.srcText = (ex && ex.summary) || store.dictItems[0].dst;
         store.dictItems = []; store.meta = ''; store.err = '';
       } else if (store.outText.trim()) {
         store.srcText = store.outText;
@@ -197,7 +203,6 @@ export default {
 
       store.err = '';
       store.dictItems = [];            // 每次翻译先清空上一次词典结果
-      dictExpanded.value = false;      // 默认收起，只显示一个通用解释
       const langs = resolveLangs(text, store.srcLang, store.tgtLang);
       const terms = enabledTerms.value;
 
@@ -297,8 +302,8 @@ export default {
     return {
       store, setTheme, LANGS, Swap: ElementPlusIconsVue.Swap,
       Delete: ElementPlusIconsVue.Delete, CopyDocument: ElementPlusIconsVue.CopyDocument,
-      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy, dictLines,
-      dictPrimary, dictExpanded,
+      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy,
+      dictHead, dictExplanations,
       outBox, swap, clearAll, copyOut, doTranslate,
     };
   },
