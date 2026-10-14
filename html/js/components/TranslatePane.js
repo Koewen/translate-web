@@ -2,10 +2,11 @@
  * TranslatePane.js —— 主翻译面板（原文/译文/工具栏/流式渲染）
  * ============================================================ */
 import { store, setTheme } from '../store.js';
-import { apiTerms, apiHistory, ollamaChatStream, ollamaPs } from '../api.js';
+import { apiTerms, apiHistory, ollamaChatStream, ollamaPs, apiDict } from '../api.js';
 import {
   LANGS, CHANNELS, OPTS, LONG_THRESHOLD,
   nameOf, resolveLangs, buildPrompt, pickChannel,
+  dictPairFor, isSingleToken,
 } from '../translator.js';
 
 let ctrl = null;
@@ -52,10 +53,17 @@ export default {
       <el-button class="duo-swap" :icon="Swap" circle title="交换语言" @click="swap" />
       <div class="duo-half">
         <div class="duo-label">译文 <span class="cnt">{{ outLen }} 字</span></div>
-        <div class="out-box" :class="{ empty: !store.outText }" ref="outBox">
+        <div class="out-box" :class="{ empty: !store.outText && !store.dictItems.length }" ref="outBox">
           <el-button class="out-copy" :icon="CopyDocument" circle size="small"
                      title="复制译文" @click="copyOut" />
-          <template v-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
+          <template v-if="store.dictItems.length">
+            <div class="dict-gloss" v-for="(it, i) in store.dictItems" :key="i">
+              <span class="dict-pos" v-if="it.pos">{{ it.pos }}</span>
+              <span class="dict-dst">{{ it.dst }}</span>
+              <span class="dict-read" v-if="it.reading">{{ it.reading }}</span>
+            </div>
+          </template>
+          <template v-else-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
           <template v-else>译文将在这里流式输出…</template>
         </div>
       </div>
@@ -118,22 +126,30 @@ export default {
       const s = store.srcLang;
       store.srcLang = store.tgtLang;
       store.tgtLang = (s === 'auto') ? 'en' : s;   // 目标不允许「自动识别」
-      if (store.outText.trim()) {
+      if (store.dictItems.length) {
+        store.srcText = store.dictItems[0].dst;      // 词典结果取首个释义回填
+        store.dictItems = []; store.meta = ''; store.err = '';
+      } else if (store.outText.trim()) {
         store.srcText = store.outText;
         store.outText = ''; store.meta = ''; store.err = '';
       }
+      store.routeWhy = '';
       ElMessage.success('已交换语言');
     }
 
     function clearAll() {
       store.srcText = ''; store.outText = '';
+      store.dictItems = [];
       store.meta = ''; store.err = ''; store.routeWhy = '';
     }
 
     async function copyOut() {
-      if (!store.outText.trim()) return ElMessage.warning('还没有译文');
+      const txt = store.dictItems.length
+        ? store.dictItems.map(x => x.dst).join(' / ')
+        : store.outText;
+      if (!txt.trim()) return ElMessage.warning('还没有译文');
       try {
-        await navigator.clipboard.writeText(store.outText);
+        await navigator.clipboard.writeText(txt);
         ElMessage.success('译文已复制到剪贴板');
       } catch { ElMessage.error('复制失败'); }
     }
@@ -144,8 +160,37 @@ export default {
       if (!text) { ElMessage.warning('请先输入要翻译的内容'); return; }
 
       store.err = '';
+      store.dictItems = [];            // 每次翻译先清空上一次词典结果
       const langs = resolveLangs(text, store.srcLang, store.tgtLang);
       const terms = enabledTerms.value;
+
+      /* ---- 离线词典快路径：单词/短词先查本地词典，命中即秒回，不调用模型 ---- */
+      const pair = dictPairFor(langs.src, langs.tgt);
+      if (pair && isSingleToken(text)) {
+        try {
+          const d = await apiDict.query(text, pair);
+          if (d.items && d.items.length) {
+            store.dictItems = d.items;
+            store.outText = '';
+            store.meta = '离线词典 · ' + d.items.length + ' 个释义';
+            store.routeWhy = '命中离线词典「' + nameOf(langs.src) + '→' + nameOf(langs.tgt)
+              + '」，秒回未走模型';
+            // 写入历史（标记为词典来源，便于回看查词记录）
+            try {
+              await apiHistory.add({
+                src_text: text, dst_text: d.items.map(x => x.dst).join(' / '),
+                src_lang: langs.src, dst_lang: langs.tgt, model: '离线词典',
+                chars: d.items.reduce((n, x) => n + (x.dst || '').length, 0),
+                duration_ms: 0,
+              });
+              store.histCount += 1;
+              store.histReloadTick = (store.histReloadTick || 0) + 1;
+            } catch (e) { console.warn('词典历史写入失败', e); }
+            return;
+          }
+        } catch (e) { console.warn('离线词典查询失败，回退模型', e); }
+      }
+
       const ch = pickChannel(text, store.mode, terms.length);
       const cfg = CHANNELS[ch.key];
       store.routeWhy = langs.note;

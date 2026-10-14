@@ -42,6 +42,12 @@ export const apiHistory = {
 
 export const apiStats = () => jfetch('/api/stats');
 
+/* ---------------- 离线词典查询 ---------------- */
+export const apiDict = {
+  query: (q, pair) =>
+    jfetch('/api/dict?q=' + encodeURIComponent(q) + '&pair=' + encodeURIComponent(pair)),
+};
+
 /* ---------------- Ollama 状态 ---------------- */
 const OLLAMA = {
   chat:    '/ollama/api/chat',

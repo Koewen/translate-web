@@ -28,6 +28,9 @@ export const store = reactive({
   err: '',
   routeWhy: '',
 
+  /* 离线词典快路径结果（命中时渲染释义列表，不调用模型） */
+  dictItems: [],
+
   /* 模型状态（/ollama/api/ps） */
   resident: [],            // [{name, size_vram, ...}]
   version: '',

@@ -12,6 +12,7 @@ translate-api HTTP 服务（Python 标准库实现，零第三方依赖）
   POST   /api/history                写入历史 {src_text,dst_text,src_lang,dst_lang,model,chars,duration_ms}
   DELETE /api/history/{id}           删除单条
   DELETE /api/history               清空历史
+  GET    /api/dict?q=&pair=         离线词典查询（pair 如 zh-en/ja-en；单词/短语快路径）
 说明：与前端同源（nginx /api/ 反代），无需 CORS；请求体上限 1MB。
 """
 import json
@@ -84,6 +85,12 @@ class Handler(BaseHTTPRequestHandler):
                     q=(qs.get("q", [""])[0] or "").strip(),
                 )
                 return self._json(200, {"items": items, "total": total})
+            if path == "/api/dict":
+                q = (qs.get("q", [""])[0] or "").strip()
+                pair = (qs.get("pair", [""])[0] or "").strip()
+                if not q or not pair:
+                    return self._fail(400, "q 与 pair 不能为空")
+                return self._json(200, {"items": db.query_dict(q, pair), "pair": pair})
             return self._fail(404, "not found: %s" % path)
         except Exception as e:  # noqa: BLE001
             return self._fail(500, str(e))

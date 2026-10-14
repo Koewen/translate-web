@@ -125,7 +125,42 @@ export function buildPrompt(text, src, tgt, terms) {
          ', without additional explanation.\n\n' + text;
 }
 
-/* ---------------- 通道路由 ---------------- */
+/* ---------------- 离线词典快路径 ----------------
+ * 已内置多语种开源词典（CC-CEDICT 中⇄英、FreeDict 日/法/西/葡/荷/德/意⇄英等）。
+ * 单词/短语先查离线词典，命中即秒回，不调用模型；未命中再走模型。
+ */
+export const DICT_PAIRS = {
+  'zh-en': { src: 'zh', tgt: 'en' },
+  'en-zh': { src: 'en', tgt: 'zh' },
+  'ja-en': { src: 'ja', tgt: 'en' },
+  'en-ja': { src: 'en', tgt: 'ja' },
+  'fr-en': { src: 'fr', tgt: 'en' },
+  'es-en': { src: 'es', tgt: 'en' },
+  'pt-en': { src: 'pt', tgt: 'en' },
+  'nl-en': { src: 'nl', tgt: 'en' },
+  'en-fr': { src: 'en', tgt: 'fr' },
+  'en-es': { src: 'en', tgt: 'es' },
+  'en-pt': { src: 'en', tgt: 'pt' },
+  'en-nl': { src: 'en', tgt: 'nl' },
+  'de-it': { src: 'de', tgt: 'it' },
+  'it-de': { src: 'it', tgt: 'de' },
+};
+
+/* 源/目标语言 → 可用的词典库 pair 代码；无则返回 null */
+export function dictPairFor(src, tgt) {
+  if (DICT_PAIRS[src + '-' + tgt]) return src + '-' + tgt;
+  return null;
+}
+
+/* 是否可作为词典快路径的查询（单词/短短语）；长句一律走模型 */
+export function isSingleToken(text) {
+  const t = (text || '').trim();
+  if (!t || t.includes('\n')) return false;
+  if (/[A-Za-z]/.test(t)) {                       // 拉丁字母：必须是单个空白分隔词
+    return t.split(/\s+/).filter(Boolean).length === 1 && t.length <= 40;
+  }
+  return !/\s/.test(t) && t.length <= 12;         // CJK：无空白、长度适中
+}
 export function pickChannel(text, mode, termsCount) {
   if (mode === 'fast')    return { key: 'fast',    why: '手动指定快速通道' };
   if (mode === 'quality') return { key: 'quality', why: '手动指定高质量通道' };

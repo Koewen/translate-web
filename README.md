@@ -9,6 +9,7 @@
 - 翻译历史：所有译文落库到本地 SQLite，支持按原文或译文检索、回填原文、清空。
 - 语种自动识别：基于字符分布与停用词的本地启发式算法，覆盖 36 种语言，不依赖外部接口。
 - 模型通道：按文本长度（默认 1500 字）与术语数量自动选择标准通道或长文通道。
+- 离线词典快路径：内置多语种开源词典（中/日/法/西/葡/荷/德/意），单词与短词先查本地词典，命中即秒回，不调用模型。
 - 玻璃拟态界面，带流动极光背景；支持浅色与深色切换。
 - 单屏布局，页面级无滚动条；窗口宽度低于 1080px 时右栏自动收为抽屉。
 - 顶栏显示 Ollama 驻留模型与显存占用，可手动卸载模型释放显存。
@@ -33,7 +34,8 @@ translate-web/
 ├── start.sh              # 一键诊断 / 启动脚本
 ├── api/
 │   ├── main.py           # 标准库 HTTP API（ThreadingHTTPServer）
-│   └── db.py             # SQLite 数据层（terms / history 两张表）
+│   ├── db.py             # SQLite 数据层（terms / history / dict）
+│   └── dict_import.py    # 离线词典导入（CC-CEDICT / FreeDict + 反向词典）
 ├── html/
 │   ├── index.html        # 入口，含 .aurora 流光背景层
 │   ├── favicon.svg
@@ -45,7 +47,7 @@ translate-web/
 │   │   ├── translator.js  # 语言表 / 语种识别 / 通道路由 / 提示词
 │   │   └── components/    # TranslatePane / TermsPanel / HistoryPanel
 │   └── vendor/           # 第三方库（vue / element-plus 等，已离线内置）
-└── data/                 # 运行时 SQLite（translate.db），不纳入版本控制
+└── data/                 # 运行时 SQLite（translate.db + dict.db），不纳入版本控制
 ```
 
 ## 快速开始
@@ -74,7 +76,7 @@ docker compose up -d
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/health` | 健康检查 |
-| GET | `/api/stats` | 计数（启用术语数 / 历史条数） |
+| GET | `/api/stats` | 计数（启用术语数 / 历史条数 / 词典词条数） |
 | GET | `/api/terms?enabled=1` | 术语列表（`enabled=1` 仅返回启用项） |
 | POST | `/api/terms` | 新增或更新术语（按 `src` 幂等） |
 | PUT | `/api/terms/{id}` | 修改术语 |
@@ -83,10 +85,11 @@ docker compose up -d
 | POST | `/api/history` | 写入一条历史 |
 | DELETE | `/api/history/{id}` | 删除单条 |
 | DELETE | `/api/history` | 清空历史 |
+| GET | `/api/dict?q=&pair=` | 离线词典查询（`q` 词头，`pair` 语对） |
 
 ## 数据库结构
 
-使用 SQLite，库文件为 `./data/translate.db`。
+使用 SQLite：用户数据（术语 / 历史）在 `./data/translate.db`，离线词典在 `./data/dict.db`。
 
 ```sql
 -- 术语干预词典：src(原文术语,唯一) -> dst(指定译名)
@@ -113,3 +116,39 @@ CREATE TABLE history (
     created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 ```
+
+-- 离线词典（静态）：pair(语对) + src(词头) + dst(释义) + pos(词性) + reading(读音)
+-- 独立存放于 ./data/dict.db，避免大批量写入锁住主库
+CREATE TABLE dict (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    pair       TEXT NOT NULL,
+    src        TEXT NOT NULL,
+    dst        TEXT NOT NULL,
+    pos        TEXT NOT NULL DEFAULT '',
+    reading    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX idx_dict_pair_src ON dict(pair, src);
+```
+
+## 离线词典（可选）
+
+除模型翻译外，另有一条离线词典快路径：当输入是单个单词或短词、且当前语向有对应词典时，先查本地 SQLite 词典，命中即直接展示释义列表，不调用模型；未命中再回退模型。查询接口为 `GET /api/dict?q=&pair=`，前端会在「路由说明」行标注「命中离线词典」，并把译文来源记为词典。
+
+内置词典来自两个开源项目（均 CC-BY-SA / GPL）：
+
+| 来源 | 方向 | 说明 |
+| --- | --- | --- |
+| CC-CEDICT | 中 ⇄ 英 | 汉英词典，纯文本，含拼音 |
+| FreeDict | 日/法/西/葡/荷/德/意 ⇄ 英 | TEI XML，多语对 |
+
+当前覆盖的语对（`pair`）：`zh-en`、`en-zh`、`ja-en`、`en-ja`、`fr-en`、`en-fr`、`es-en`、`en-es`、`pt-en`、`en-pt`、`nl-en`、`en-nl`、`de-it`、`it-de`。其中 `en-zh`、`en-ja` 为反向词典，由脚本从 `zh-en`、`ja-en` 派生，并补录了一批高频招呼语，保证默认「外文词 → 中文」方向的常见词也能秒回。
+
+词典为独立数据库 `./data/dict.db`，体量较大（百万级词条），未纳入版本控制。导入需先自行下载开源词库（CC-CEDICT 文本与 FreeDict 目录，来源与用法见 `api/dict_import.py` 顶部注释），再在 `api/` 目录执行：
+
+```bash
+TRANSLATE_DICT_DB=./data/dict.db python dict_import.py --cedict /path/cedict.txt --freedict /path/fd-dictionaries
+TRANSLATE_DICT_DB=./data/dict.db python dict_import.py --reverse
+```
+
+不导入词典时，快路径自动跳过，全部走模型，其余功能不受影响。

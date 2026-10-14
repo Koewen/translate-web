@@ -13,6 +13,8 @@ import threading
 import time
 
 DB_PATH = os.environ.get("TRANSLATE_DB", "/data/translate.db")
+# 离线词典库（静态、体量大），与用户可变数据(terms/history)分库，避免大批量导入锁住主库
+DICT_DB_PATH = os.environ.get("TRANSLATE_DICT_DB", "/data/dict.db")
 
 _init_lock = threading.Lock()
 _initialized = False
@@ -25,6 +27,14 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def _connect_dict() -> sqlite3.Connection:
+    conn = sqlite3.connect(DICT_DB_PATH, timeout=15, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -249,6 +259,94 @@ def stats() -> dict:
     try:
         t = conn.execute("SELECT COUNT(*) FROM terms WHERE enabled=1").fetchone()[0]
         h = conn.execute("SELECT COUNT(*) FROM history").fetchone()[0]
-        return {"terms": t, "history": h}
+        d = 0
+        try:
+            dc = _connect_dict()
+            d = dc.execute("SELECT COUNT(*) FROM dict").fetchone()[0]
+            dc.close()
+        except Exception:
+            pass
+        return {"terms": t, "history": h, "dict": d}
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------- dict -------
+# 离线词典库（静态）：pair(语对) + src(词头) + dst(释义) + pos(词性) + reading(读音)
+_DICT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dict (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    pair      TEXT NOT NULL,                 -- 语对，如 'zh-en' / 'ja-en' / 'ko-en'
+    src       TEXT NOT NULL,                 -- 源语言词头（中文/日文/韩文等）
+    dst       TEXT NOT NULL,                 -- 译文/释义（多条用 ' / ' 分隔）
+    pos       TEXT NOT NULL DEFAULT '',      -- 词性缩写，如 n. / v. / adj.
+    reading   TEXT NOT NULL DEFAULT '',      -- 拼音 / 假名 / 罗马音等
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_dict_pair_src ON dict(pair, src);
+"""
+
+_dict_init_lock = threading.Lock()
+_dict_initialized = False
+
+
+def init_dict_db() -> None:
+    global _dict_initialized
+    with _dict_init_lock:
+        if _dict_initialized:
+            return
+        os.makedirs(os.path.dirname(DICT_DB_PATH) or ".", exist_ok=True)
+        conn = _connect_dict()
+        try:
+            with _write_lock:
+                conn.executescript(_DICT_SCHEMA)
+                conn.commit()
+        finally:
+            conn.close()
+        _dict_initialized = True
+
+
+def clear_dict(pair: str) -> int:
+    """清空某语对全部词条（用于重新导入）。"""
+    init_dict_db()
+    conn = _connect_dict()
+    try:
+        with _write_lock:
+            cur = conn.execute("DELETE FROM dict WHERE pair=?", (pair,))
+            conn.commit()
+            return cur.rowcount
+    finally:
+        conn.close()
+
+
+def import_dict_entries(pair: str, rows: list) -> int:
+    """批量写入词典词条。rows: [(src, dst, pos, reading), ...]"""
+    init_dict_db()
+    conn = _connect_dict()
+    try:
+        with _write_lock:
+            conn.executemany(
+                "INSERT INTO dict(pair, src, dst, pos, reading) VALUES(?,?,?,?,?)",
+                [(pair, r[0], r[1], r[2] or "", r[3] or "") for r in rows],
+            )
+            conn.commit()
+            return conn.execute("SELECT COUNT(*) FROM dict WHERE pair=?", (pair,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def query_dict(q: str, pair: str, limit: int = 20) -> list:
+    """精确词头命中查询（词典快路径用）。"""
+    init_dict_db()
+    q = (q or "").strip()
+    if not q:
+        return []
+    conn = _connect_dict()
+    try:
+        rows = conn.execute(
+            "SELECT src, dst, pos, reading FROM dict WHERE pair=? AND src=? LIMIT ?",
+            (pair, q, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

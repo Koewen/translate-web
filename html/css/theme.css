@@ -256,6 +256,13 @@ html.dark .route-chip{ color:var(--brand); }
 .out-copy:hover{ color:var(--brand); }
 .out-box:hover .out-copy{ opacity:1; }
 
+/* 离线词典快路径：释义列表 */
+.dict-gloss{ padding:8px 0; border-bottom:1px dashed var(--border); line-height:1.75; word-break:break-word; }
+.dict-gloss:last-child{ border-bottom:none; }
+.dict-pos{ display:inline-block; min-width:30px; margin-right:8px; padding:1px 8px; border-radius:7px; background:var(--brand-soft); color:var(--brand-deep); font-size:12px; font-weight:600; text-align:center; vertical-align:1px; }
+.dict-dst{ color:var(--text-1); }
+.dict-read{ color:var(--text-3); font-size:13px; margin-left:6px; }
+
 /* 底部操作条 */
 .pane-bottom{
   display:flex; align-items:center; gap:12px;
