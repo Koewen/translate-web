@@ -11,6 +11,11 @@ import {
 
 let ctrl = null;
 
+/* 词典义项拆分：CC-CEDICT / FreeDict 用 " / " 连接多个义项，逐行展示 */
+function splitSenses(dst) {
+  return String(dst || '').split(' / ').map(s => s.trim()).filter(Boolean);
+}
+
 export default {
   name: 'TranslatePane',
   template: `
@@ -57,10 +62,10 @@ export default {
           <el-button class="out-copy" :icon="CopyDocument" circle size="small"
                      title="复制译文" @click="copyOut" />
           <template v-if="store.dictItems.length">
-            <div class="dict-gloss" v-for="(it, i) in store.dictItems" :key="i">
-              <span class="dict-pos" v-if="it.pos">{{ it.pos }}</span>
-              <span class="dict-dst">{{ it.dst }}</span>
-              <span class="dict-read" v-if="it.reading">{{ it.reading }}</span>
+            <div class="dict-gloss" v-for="(ln, i) in dictLines" :key="i">
+              <span class="dict-pos" v-if="ln.pos">{{ ln.pos }}</span>
+              <span class="dict-dst">{{ ln.text }}</span>
+              <span class="dict-read" v-if="ln.reading">{{ ln.reading }}</span>
             </div>
           </template>
           <template v-else-if="store.outText">{{ store.outText }}<span class="caret" v-if="store.running"></span></template>
@@ -95,6 +100,16 @@ export default {
     const slow = computed(() => channel.value.key === 'quality');
     const pairLabel = computed(() =>
       nameOf(store.srcLang) + ' → ' + nameOf(store.tgtLang));
+
+    /* 离线词典：把每个词条的多个义项（" / " 连接）拆成独立行，逐行展示 */
+    const dictLines = computed(() => {
+      const lines = [];
+      for (const it of store.dictItems) {
+        splitSenses(it.dst).forEach((s, i) =>
+          lines.push({ text: s, pos: i === 0 ? it.pos : '', reading: i === 0 ? it.reading : '' }));
+      }
+      return lines;
+    });
 
     /* 路由说明行：随输入/模式/术语实时联动 */
     const routeWhy = computed(() => {
@@ -145,7 +160,7 @@ export default {
 
     async function copyOut() {
       const txt = store.dictItems.length
-        ? store.dictItems.map(x => x.dst).join(' / ')
+        ? store.dictItems.flatMap(x => splitSenses(x.dst)).join('\n')
         : store.outText;
       if (!txt.trim()) return ElMessage.warning('还没有译文');
       try {
@@ -172,7 +187,8 @@ export default {
           if (d.items && d.items.length) {
             store.dictItems = d.items;
             store.outText = '';
-            store.meta = '离线词典 · ' + d.items.length + ' 个释义';
+            const senseCount = d.items.reduce((n, x) => n + splitSenses(x.dst).length, 0);
+            store.meta = '离线词典 · ' + senseCount + ' 个义项';
             store.routeWhy = '命中离线词典「' + nameOf(langs.src) + '→' + nameOf(langs.tgt)
               + '」，秒回未走模型';
             // 写入历史（标记为词典来源，便于回看查词记录）
@@ -259,7 +275,7 @@ export default {
     return {
       store, setTheme, LANGS, Swap: ElementPlusIconsVue.Swap,
       Delete: ElementPlusIconsVue.Delete, CopyDocument: ElementPlusIconsVue.CopyDocument,
-      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy,
+      modeOpts, srcLen, outLen, channel, slow, pairLabel, routeWhy, dictLines,
       outBox, swap, clearAll, copyOut, doTranslate,
     };
   },
