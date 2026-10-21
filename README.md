@@ -55,7 +55,7 @@ translate-web/
 前置条件：已安装 Docker，且本机（或网络可达的机器）运行 Ollama。其地址通过 `host.docker.internal:11434` 访问宿主机上的 Ollama——该名称由 compose 的 `extra_hosts` 映射到 `.env` 里的 `OLLAMA_HOST_IP`（不写死内网地址，`.env` 已 gitignore）。首次部署请创建 `.env` 并填入你的 Ollama 主机可达地址；若使用其他网络拓扑，请相应修改 `OLLAMA_HOST_IP`。
 
 ```bash
-git clone <your-repo> translate-web
+git clone https://github.com/Koewen/translate-web.git
 cd translate-web
 docker compose up -d
 ```
